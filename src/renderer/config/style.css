@@ -1,0 +1,252 @@
+:root {
+  --bg: #f7f4ef;
+  --card: #ffffff;
+  --text: #2b2b2b;
+  --muted: #7a7a7a;
+  --primary: #ff4d6d;
+  --primary-dark: #e63956;
+  --success: #2ec4b6;
+  --danger: #e76f51;
+  --border: #ece7df;
+  --shadow: 0 10px 30px rgba(43, 43, 43, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(160deg, #fff7f9 0%, var(--bg) 45%, #eef6ff 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 520px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+}
+
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.toggles label {
+  flex-direction: row;
+  align-items: center;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+
+.btn.primary { background: var(--primary); color: #fff; }
+.btn.primary:hover { background: var(--primary-dark); }
+.btn.success { background: var(--success); color: #fff; }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.ghost { background: transparent; color: var(--danger); border: 1px solid #f3c9bf; }
+.btn.large { padding: 14px 28px; font-size: 16px; }
+
+.tip {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.tip code {
+  background: #f3f0ea;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.upload-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.upload-list.empty {
+  display: block;
+  min-height: 120px;
+  border: 2px dashed var(--border);
+  border-radius: 14px;
+  background: #faf8f5;
+}
+
+.empty-tip {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+}
+
+.upload-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.upload-item img {
+  width: 100%;
+  height: 140px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#eee 0% 25%, #f8f8f8 0% 50%) 50% / 16px 16px;
+}
+
+.upload-meta {
+  padding: 10px;
+}
+
+.upload-meta .name {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+}
+
+.upload-meta select {
+  width: 100%;
+}
+
+.frame-order {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 6px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+
+.badge.high { background: #dff7f2; color: #1b8f82; }
+.badge.low { background: #fff0f3; color: #c43d5a; }
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.status {
+  font-size: 13px;
+  color: #c43d5a;
+  font-weight: 600;
+  min-height: 20px;
+}
+
+.muted {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+@media (max-width: 720px) {
+  .hero { flex-direction: column; }
+  .grid { grid-template-columns: 1fr; }
+}

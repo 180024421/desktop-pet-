@@ -1,0 +1,152 @@
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+#pet-img {
+  max-width: 240px;
+  max-height: 260px;
+  object-fit: contain;
+  cursor: grab;
+  transition: transform 0.15s ease;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.18));
+}
+
+#pet-img.dragging {
+  cursor: grabbing;
+}
+
+#pet-img.effect-breathe {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+#pet-img.effect-bounce {
+  animation: bounce 1.2s ease-in-out infinite;
+}
+
+#pet-img.effect-wiggle {
+  animation: wiggle 0.8s ease-in-out infinite;
+}
+
+#pet-img.shake {
+  animation: shake 0.35s ease;
+}
+
+#pet-img.jump {
+  animation: jump 0.45s ease;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+@keyframes jump {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-18px) scale(1.05); }
+}
+
+#bubble {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 200px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  pointer-events: none;
+  animation: pop 0.25s ease;
+}
+
+#bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.95);
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: translateX(-50%) scale(0.85); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+#affection {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#affection-bar {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, #ff8fab, #ff4d6d);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+#hint {
+  position: absolute;
+  bottom: 0;
+  font-size: 10px;
+  color: rgba(80, 80, 80, 0.7);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.hidden {
+  display: none !important;
+}

@@ -1,0 +1,42 @@
+{
+  "name": "desktop-pet",
+  "version": "1.0.0",
+  "description": "上传多张图片，自动生成透明悬浮桌面宠物",
+  "main": "dist/main/index.js",
+  "author": "180024421",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "dev": "node scripts/start-electron.js",
+    "start": "node scripts/start-electron.js",
+    "pack": "echo 请先安装 electron-builder: npm i -D electron-builder && npm run build && electron-builder --dir",
+    "dist": "echo 请先安装 electron-builder: npm i -D electron-builder && npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.desktop.pet",
+    "productName": "Desktop Pet",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "typescript": "^5.7.2"
+  }
+}

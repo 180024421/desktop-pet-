@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>创建桌面宠物</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <h1>🐾 Desktop Pet 工坊</h1>
+        <p>上传多张图片，按文件名自动识别动作；也可手动指定。一键生成透明悬浮桌面宠物。</p>
+      </div>
+      <div class="hero-actions">
+        <input
+          id="file-input"
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+          multiple
+          class="file-input-hidden"
+        />
+        <label id="btn-pick" for="file-input" class="btn primary">选择图片（可多选）</label>
+        <button id="btn-launch" type="button" class="btn success">启动宠物</button>
+      </div>
+    </header>
+
+    <section class="card settings">
+      <h2>基础设置</h2>
+      <div class="grid">
+        <label>宠物名字 <input id="pet-name" type="text" placeholder="小宠物" /></label>
+        <label>动画模式
+          <select id="animation-mode">
+            <option value="flipbook">连续帧循环（推荐，多图自动动起来）</option>
+            <option value="states">按动作分类（点击/睡觉等切换不同图）</option>
+          </select>
+        </label>
+        <label>待机动效（单图时）
+          <select id="css-effect">
+            <option value="breathe">呼吸</option>
+            <option value="bounce">弹跳</option>
+            <option value="wiggle">摇摆</option>
+            <option value="none">无</option>
+          </select>
+        </label>
+        <label>帧间隔(ms) <input id="frame-interval" type="number" min="80" max="2000" value="180" /></label>
+        <label>多久后睡觉(秒) <input id="idle-sleep" type="number" min="30" max="600" value="120" /></label>
+      </div>
+      <div class="toggles">
+        <label><input id="toggle-speech" type="checkbox" checked /> 说话气泡</label>
+        <label><input id="toggle-wander" type="checkbox" checked /> 桌面漫游</label>
+        <label><input id="toggle-follow" type="checkbox" /> 跟随鼠标</label>
+        <label><input id="toggle-top" type="checkbox" checked /> 始终置顶</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>图片分配 <span id="auto-summary" class="muted"></span></h2>
+        <button id="btn-clear" class="btn danger ghost">清空全部</button>
+      </div>
+      <p class="tip" id="upload-tip">
+        <strong>连续帧模式（默认）：</strong>按上传顺序组成循环动画，适合多张动作分解图或逐帧素材。
+        <strong>动作分类模式：</strong>文件名含 <code>idle</code>、<code>click</code>、<code>sleep</code> 等关键词可自动分类（支持中文）。
+      </p>
+      <div id="upload-list" class="upload-list empty">
+        <div class="empty-tip">还没有图片，点击上方「选择图片」开始</div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <button id="btn-save" class="btn primary large">保存并生成宠物</button>
+      <span id="status" class="status">正在初始化…</span>
+    </footer>
+  </div>
+  <script src="config.js"></script>
+</body>
+</html>
