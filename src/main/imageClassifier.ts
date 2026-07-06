@@ -11,6 +11,7 @@ const RULES: Array<{ state: PetState; keywords: string[] }> = [
   { state: "sad", keywords: ["sad", "cry", "难过", "哭", "伤心"] },
   { state: "eat", keywords: ["eat", "feed", "food", "吃", "喂", "食"] },
   { state: "angry", keywords: ["angry", "mad", "生气", "怒"] },
+  { state: "special", keywords: ["special", "secret", "rare", "隐藏", "稀有", "解锁"] },
 ];
 
 export interface ClassifiedUpload {
@@ -61,6 +62,7 @@ export function buildFlipbookFrames(paths: string[]): StateFrames {
     sad: [],
     eat: [],
     angry: [],
+    special: [],
   };
 }
 
@@ -102,6 +104,7 @@ export function buildFramesFromAssignments(
     sad: [],
     eat: [],
     angry: [],
+    special: [],
   };
   for (const item of assignments) {
     frames[item.state].push(item.destPath);
@@ -132,6 +135,7 @@ export function describeAutoResult(frames: StateFrames): string {
     sad: "难过",
     eat: "进食",
     angry: "生气",
+    special: "特殊",
   };
   for (const [state, label] of Object.entries(labels) as [PetState, string][]) {
     const n = frames[state].length;
@@ -150,6 +154,7 @@ export const STATE_LABELS: Record<PetState, string> = {
   sad: "难过",
   eat: "进食",
   angry: "生气",
+  special: "特殊",
 };
 
 export const ALL_STATES: PetState[] = [
@@ -162,4 +167,5 @@ export const ALL_STATES: PetState[] = [
   "sad",
   "eat",
   "angry",
+  "special",
 ];

@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { app } from "electron";
 import {
   DEFAULT_CONFIG,
+  ImageImportOptions,
   PetConfig,
   cloneConfig,
   hasAnyFrame,
@@ -11,37 +11,60 @@ import {
   buildFlipbookFrames,
   mergeExistingToFlipbook,
 } from "./imageClassifier";
+import { fileUrlForRenderer } from "./protocol";
+import { getActiveProfileId, getConfigPath, getImagesDir, getProfileBaseDir } from "./profiles";
+import { processImageFile } from "./imageProcessor";
 
-const MIME_BY_EXT: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-};
+export { fileUrlForRenderer } from "./protocol";
+export {
+  createProfile,
+  deleteProfile,
+  exportProfileZip,
+  getActiveProfileId,
+  getImagesDir,
+  importProfileZip,
+  listProfiles,
+  renameProfile,
+  switchProfile,
+} from "./profiles";
 
-function configPath(): string {
-  return path.join(app.getPath("userData"), "pet-config.json");
-}
-
-function imagesDir(): string {
-  return path.join(app.getPath("userData"), "images");
-}
-
-export function getImagesDir(): string {
-  fs.mkdirSync(imagesDir(), { recursive: true });
-  return imagesDir();
+function resolveFramePaths(config: PetConfig): PetConfig {
+  const base = getProfileBaseDir(config.profileId);
+  const next = cloneConfig(config);
+  for (const key of Object.keys(next.frames) as (keyof typeof next.frames)[]) {
+    next.frames[key] = next.frames[key].map((p) => {
+      if (!p) return p;
+      return path.isAbsolute(p) ? p : path.join(base, p.replace(/\//g, path.sep));
+    });
+  }
+  return next;
 }
 
 export function loadConfig(): PetConfig {
-  const file = configPath();
-  if (!fs.existsSync(file)) return cloneConfig(DEFAULT_CONFIG);
+  return loadConfigForProfile(getActiveProfileId());
+}
+
+export function loadConfigForProfile(profileId: string): PetConfig {
+  const file = getConfigPath(profileId);
+  if (!fs.existsSync(file)) {
+    const cfg = cloneConfig(DEFAULT_CONFIG);
+    cfg.profileId = profileId;
+    return cfg;
+  }
   try {
     const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as PetConfig;
-    const merged = { ...cloneConfig(DEFAULT_CONFIG), ...raw, version: 1 };
-    return normalizeAnimation(merged);
+    const merged: PetConfig = {
+      ...cloneConfig(DEFAULT_CONFIG),
+      ...raw,
+      version: 1,
+      profileId,
+      frames: { ...cloneConfig(DEFAULT_CONFIG).frames, ...(raw.frames || {}) },
+    };
+    return normalizeAnimation(resolveFramePaths(merged));
   } catch {
-    return cloneConfig(DEFAULT_CONFIG);
+    const cfg = cloneConfig(DEFAULT_CONFIG);
+    cfg.profileId = profileId;
+    return cfg;
   }
 }
 
@@ -62,22 +85,35 @@ function normalizeAnimation(config: PetConfig): PetConfig {
 }
 
 export function saveConfig(config: PetConfig): void {
-  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(config, null, 2), "utf-8");
+  const file = getConfigPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  config.profileId = getActiveProfileId();
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), "utf-8");
 }
 
 export function isPetReady(config: PetConfig): boolean {
   return hasAnyFrame(config.frames);
 }
 
-export function copyImageToStore(sourcePath: string): string {
+export async function copyImageToStore(
+  sourcePath: string,
+  importOptions?: ImageImportOptions
+): Promise<string> {
   const dir = getImagesDir();
   const normalized = path.resolve(sourcePath);
   if (normalized.startsWith(path.resolve(dir))) return normalized;
+
   const ext = path.extname(sourcePath).toLowerCase() || ".png";
-  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+  const usePng = importOptions?.chromakey || importOptions?.trimTransparent;
+  const outExt = usePng ? ".png" : ext;
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${outExt}`;
   const dest = path.join(dir, name);
-  fs.copyFileSync(sourcePath, dest);
+
+  if (importOptions && (importOptions.trimTransparent || importOptions.chromakey)) {
+    await processImageFile(sourcePath, dest, importOptions);
+  } else {
+    fs.copyFileSync(sourcePath, dest);
+  }
   return dest;
 }
 
@@ -85,18 +121,10 @@ export function removeImage(filePath: string): void {
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 }
 
-export function fileUrlForRenderer(absPath: string): string {
-  try {
-    if (!fs.existsSync(absPath)) {
-      console.warn("[desktop-pet] image missing:", absPath);
-      return "";
-    }
-    const ext = path.extname(absPath).toLowerCase();
-    const mime = MIME_BY_EXT[ext] ?? "image/png";
-    const base64 = fs.readFileSync(absPath).toString("base64");
-    return `data:${mime};base64,${base64}`;
-  } catch (err) {
-    console.error("[desktop-pet] read image failed:", absPath, err);
-    return "";
+export function remapFramePaths(config: PetConfig, pathMap: Map<string, string>): PetConfig {
+  const next = cloneConfig(config);
+  for (const state of Object.keys(next.frames) as (keyof typeof next.frames)[]) {
+    next.frames[state] = next.frames[state].map((p) => pathMap.get(p) ?? p);
   }
+  return next;
 }

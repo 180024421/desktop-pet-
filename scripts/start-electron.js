@@ -3,7 +3,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 
-require("./copy-assets");
+require("./build");
 
 const electronExe = path.join(
   root,

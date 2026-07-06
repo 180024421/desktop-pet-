@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <h1>🐾 Desktop Pet 工坊</h1>
-        <p>上传多张图片，按文件名自动识别动作；也可手动指定。一键生成透明悬浮桌面宠物。</p>
+        <p>上传多张图片、GIF/视频拆帧，按文件名自动识别动作；支持多档案、导入导出与动效预览。</p>
       </div>
       <div class="hero-actions">
         <input
@@ -21,10 +21,66 @@
           multiple
           class="file-input-hidden"
         />
-        <label id="btn-pick" for="file-input" class="btn primary">选择图片（可多选）</label>
+        <label id="btn-pick" for="file-input" class="btn primary">选择图片</label>
+        <button id="btn-pick-media" type="button" class="btn secondary">GIF/视频拆帧</button>
         <button id="btn-launch" type="button" class="btn success">启动宠物</button>
       </div>
     </header>
+
+    <section class="card">
+      <h2>宠物档案</h2>
+      <div class="profile-row">
+        <select id="profile-select"></select>
+        <button id="btn-profile-new" type="button" class="btn ghost">新建</button>
+        <button id="btn-profile-export" type="button" class="btn ghost">导出 ZIP</button>
+        <button id="btn-profile-import" type="button" class="btn ghost">导入 ZIP</button>
+      </div>
+    </section>
+
+    <section class="card settings">
+      <h2>高级互动</h2>
+      <div class="grid">
+        <label>显示模式
+          <select id="display-mode">
+            <option value="full">完整（气泡+提示）</option>
+            <option value="pet-only">仅宠物</option>
+            <option value="widget">番茄钟挂件</option>
+          </select>
+        </label>
+        <label>番茄钟 (分钟) <input id="pomodoro-minutes" type="number" min="5" max="90" value="25" /></label>
+        <label>天气城市 <input id="weather-city" type="text" placeholder="Beijing" /></label>
+        <label>副宠档案（最多 2 只）
+          <div id="multi-pet-select" class="multi-pet-select"></div>
+        </label>
+      </div>
+      <div class="toggles">
+        <label><input id="toggle-schedule" type="checkbox" checked /> 日程气泡（早/午/晚）</label>
+        <label><input id="toggle-activity" type="checkbox" checked /> 系统活跃度联动</label>
+        <label><input id="toggle-weather" type="checkbox" /> 定时天气台词</label>
+        <label><input id="toggle-office-bridge" type="checkbox" /> Office Buddy 联动</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>导出与分享</h2>
+      <div class="tool-row">
+        <button id="btn-export-stickers" type="button" class="btn secondary">导出透明贴纸包</button>
+        <button id="btn-export-gif" type="button" class="btn secondary">导出透明 GIF</button>
+        <button id="btn-export-webp" type="button" class="btn secondary">导出 WebP 动图</button>
+        <button id="btn-diary" type="button" class="btn secondary">生成今日日记</button>
+        <button id="btn-weekly-diary" type="button" class="btn secondary">生成周报</button>
+        <button id="btn-share-create" type="button" class="btn secondary">创建分享码</button>
+        <button id="btn-share-import" type="button" class="btn ghost">导入分享码</button>
+        <button id="btn-backup-export" type="button" class="btn ghost">备份设置</button>
+        <button id="btn-backup-import" type="button" class="btn ghost">恢复设置</button>
+        <button id="btn-stats" type="button" class="btn ghost">统计面板</button>
+        <button id="btn-bundled-packs" type="button" class="btn ghost">导入内置素材</button>
+        <button id="btn-plugins-dir" type="button" class="btn ghost">插件目录</button>
+        <button id="btn-batch-rename" type="button" class="btn ghost">批量重命名建议</button>
+      </div>
+      <p id="frame-gaps" class="tip muted">帧缺口检测中…</p>
+      <p id="config-summary" class="tip muted"></p>
+    </section>
 
     <section class="card settings">
       <h2>基础设置</h2>
@@ -32,11 +88,11 @@
         <label>宠物名字 <input id="pet-name" type="text" placeholder="小宠物" /></label>
         <label>动画模式
           <select id="animation-mode">
-            <option value="flipbook">连续帧循环（推荐，多图自动动起来）</option>
-            <option value="states">按动作分类（点击/睡觉等切换不同图）</option>
+            <option value="flipbook">连续帧循环（推荐）</option>
+            <option value="states">按动作分类</option>
           </select>
         </label>
-        <label>待机动效（单图时）
+        <label>待机动效（单图）
           <select id="css-effect">
             <option value="breathe">呼吸</option>
             <option value="bounce">弹跳</option>
@@ -44,14 +100,106 @@
             <option value="none">无</option>
           </select>
         </label>
-        <label>帧间隔(ms) <input id="frame-interval" type="number" min="80" max="2000" value="180" /></label>
-        <label>多久后睡觉(秒) <input id="idle-sleep" type="number" min="30" max="600" value="120" /></label>
+        <label>帧间隔 (ms) <input id="frame-interval" type="number" min="80" max="2000" value="180" /></label>
+        <label>多久后睡觉 (秒) <input id="idle-sleep" type="number" min="30" max="600" value="120" /></label>
+        <label>漫游间隔 (ms) <input id="wander-interval" type="number" min="2000" max="20000" value="4500" /></label>
+        <label>漫游距离 (px) <input id="wander-distance" type="number" min="40" max="400" value="120" /></label>
+        <label>跟随速度 <input id="follow-speed" type="number" min="4" max="30" value="12" /></label>
+        <label>贴边距离 (px) <input id="snap-distance" type="number" min="16" max="120" value="48" /></label>
       </div>
       <div class="toggles">
         <label><input id="toggle-speech" type="checkbox" checked /> 说话气泡</label>
         <label><input id="toggle-wander" type="checkbox" checked /> 桌面漫游</label>
         <label><input id="toggle-follow" type="checkbox" /> 跟随鼠标</label>
         <label><input id="toggle-top" type="checkbox" checked /> 始终置顶</label>
+        <label><input id="toggle-autostart" type="checkbox" /> 开机自启</label>
+        <label><input id="toggle-clickthrough" type="checkbox" /> 鼠标穿透</label>
+        <label><input id="toggle-sync-bubble" type="checkbox" checked /> 气泡随动作切换</label>
+        <label><input id="toggle-sync-wallpaper" type="checkbox" /> 壁纸随动作切换</label>
+        <label><input id="toggle-ambient" type="checkbox" checked /> 定时展示动作</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>素材处理（非 AI）</h2>
+      <div class="grid">
+        <label class="toggle-inline"><input id="toggle-trim" type="checkbox" /> 自动裁切透明边</label>
+        <label>色度键抠图（留空不启用）
+          <input id="chromakey-color" type="text" placeholder="#00FF00" />
+        </label>
+        <label>抠图容差 <input id="chromakey-tolerance" type="number" min="0" max="120" value="32" /></label>
+        <button id="btn-chroma-pick" type="button" class="btn ghost">吸管取色说明</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>自定义台词（每行一句，留空用默认）</h2>
+      <div class="grid phrases-grid">
+        <label>点击/摸头<textarea id="phrases-click" rows="3" placeholder="摸头杀~"></textarea></label>
+        <label>开心/玩球<textarea id="phrases-happy" rows="3"></textarea></label>
+        <label>喂食/玩鱼<textarea id="phrases-feed" rows="3"></textarea></label>
+        <label>陪玩<textarea id="phrases-play" rows="3"></textarea></label>
+        <label>待机/撒娇<textarea id="phrases-idle" rows="3"></textarea></label>
+        <label>睡觉/打哈欠<textarea id="phrases-sleep" rows="3"></textarea></label>
+        <label>跑步/漫游<textarea id="phrases-wander" rows="3"></textarea></label>
+        <label>摸一摸<textarea id="phrases-pet" rows="3"></textarea></label>
+        <label>生气/咆哮<textarea id="phrases-angry" rows="3"></textarea></label>
+        <label>隐藏/特殊<textarea id="phrases-special" rows="3"></textarea></label>
+        <label>日程提醒<textarea id="phrases-schedule" rows="3"></textarea></label>
+      </div>
+      <button id="btn-phrase-suggest" type="button" class="btn ghost">根据名字生成台词建议</button>
+    </section>
+
+    <section class="card">
+      <h2>连续帧时间轴</h2>
+      <div id="timeline-bar" class="timeline-bar muted">上传图片后显示时间轴</div>
+      <div class="grid">
+        <label>循环起点（帧序号，从 0）<input id="flipbook-loop-start" type="number" min="0" value="0" /></label>
+        <label>循环终点（-1 表示最后一帧）<input id="flipbook-loop-end" type="number" min="-1" value="-1" /></label>
+        <label class="toggle-inline"><input id="toggle-click-once" type="checkbox" checked /> 点击动作只播一次</label>
+      </div>
+    </section>
+
+    <section class="card settings">
+      <h2>体验增强</h2>
+      <div class="grid">
+        <label>气泡样式
+          <select id="bubble-style">
+            <option value="round">圆角</option>
+            <option value="pixel">像素</option>
+            <option value="comic">漫画</option>
+          </select>
+        </label>
+        <label>音效音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.35" /></label>
+        <label>贴边边距 <input id="edge-margin" type="number" min="0" max="80" value="12" /></label>
+        <label>帧缓存上限 <input id="frame-cache-max" type="number" min="20" max="500" value="120" /></label>
+        <label>提醒间隔 (分钟) <input id="reminder-interval" type="number" min="5" max="180" value="45" /></label>
+        <label>LM Studio 地址 <input id="lmstudio-url" type="text" value="http://127.0.0.1:1234" /></label>
+        <label>LM 台词间隔 (分钟) <input id="lmstudio-interval" type="number" min="10" max="240" value="60" /></label>
+      </div>
+      <div class="toggles">
+        <label><input id="toggle-sound" type="checkbox" checked /> 互动音效</label>
+        <label><input id="toggle-random-events" type="checkbox" checked /> 随机彩蛋事件</label>
+        <label><input id="toggle-throw" type="checkbox" checked /> 甩动抛掷互动</label>
+        <label><input id="toggle-pet-bump" type="checkbox" checked /> 多宠碰一碰</label>
+        <label><input id="toggle-scene-hide" type="checkbox" /> 全屏时隐藏</label>
+        <label><input id="toggle-scene-shrink" type="checkbox" checked /> 全屏时缩小</label>
+        <label><input id="toggle-reminders" type="checkbox" /> 定时喝水/休息提醒</label>
+        <label><input id="toggle-lmstudio" type="checkbox" /> LM Studio 本地台词</label>
+        <label><input id="toggle-office-write" type="checkbox" checked /> 同步撸 Buddy 计数</label>
+        <label><input id="toggle-plugins" type="checkbox" checked /> 启用插件台词</label>
+        <label><input id="toggle-auto-update" type="checkbox" checked /> 启动时检查更新</label>
+      </div>
+    </section>
+
+    <section class="card preview-card">
+      <div class="card-head">
+        <h2>动效预览</h2>
+        <button id="btn-preview-toggle" type="button" class="btn ghost">播放预览</button>
+      </div>
+      <div class="preview-stage">
+        <canvas id="preview-chroma" class="hidden"></canvas>
+        <img id="preview-img" alt="preview" />
       </div>
     </section>
 
@@ -60,9 +208,9 @@
         <h2>图片分配 <span id="auto-summary" class="muted"></span></h2>
         <button id="btn-clear" class="btn danger ghost">清空全部</button>
       </div>
-      <p class="tip" id="upload-tip">
-        <strong>连续帧模式（默认）：</strong>按上传顺序组成循环动画，适合多张动作分解图或逐帧素材。
-        <strong>动作分类模式：</strong>文件名含 <code>idle</code>、<code>click</code>、<code>sleep</code> 等关键词可自动分类（支持中文）。
+      <p class="tip">
+        连续帧模式：拖拽卡片调整顺序。动作分类模式：按文件名关键词自动分类。
+        快捷键：Ctrl+Shift+P 显示/隐藏 · Ctrl+Shift+F 喂食 · Ctrl+Shift+E 打开工坊
       </p>
       <div id="upload-list" class="upload-list empty">
         <div class="empty-tip">还没有图片，点击上方「选择图片」开始</div>
@@ -75,5 +223,6 @@
     </footer>
   </div>
   <script src="config.js"></script>
+  <script src="config-advanced.js"></script>
 </body>
 </html>

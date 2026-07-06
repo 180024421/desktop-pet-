@@ -4,6 +4,7 @@ import {
   Tray,
   app,
   dialog,
+  globalShortcut,
   ipcMain,
   nativeImage,
   screen,
@@ -12,27 +13,71 @@ import {
 } from "electron";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import {
   buildFlipbookFrames,
   buildFramesFromAssignments,
   classifyUploads,
   describeAutoResult,
 } from "./imageClassifier";
+import { extractGifFrames, extractVideoFrames, isGifFile, isVideoFile } from "./imageProcessor";
 import {
   copyImageToStore,
+  createProfile,
+  deleteProfile,
+  exportProfileZip,
   fileUrlForRenderer,
   getImagesDir,
+  importProfileZip,
   isPetReady,
+  listProfiles,
   loadConfig,
   removeImage,
+  renameProfile,
   saveConfig,
+  switchProfile,
 } from "./store";
-import { PetConfig, PetState, cloneConfig } from "./types";
+import { ImageImportOptions, PetConfig, PetState, cloneConfig } from "./types";
+import { setDesktopWallpaper } from "./wallpaper";
+import { serializePetConfig } from "./serialize-config";
+import { frameCacheGet, frameCacheSet } from "./frame-cache";
+import { syncMultiPetWindows } from "./multi-pet";
+import { exportStickerPack, exportsDir } from "./export-stickers";
+import { renderDiaryCard } from "./diary";
+import { createSharePack } from "./share-pack";
+import { openStatsPanel } from "./stats-panel";
 
 let petWindow: BrowserWindow | null = null;
 let configWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let followInterval: ReturnType<typeof setInterval> | null = null;
+let positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+const BASE_PET_WIDTH = 280;
+const BASE_PET_HEIGHT = 320;
+
+function shouldOpenDevTools(): boolean {
+  return !app.isPackaged && process.env.DESKTOP_PET_DEVTOOLS === "1";
+}
+
+function schedulePositionSave(x: number, y: number): void {
+  if (positionSaveTimer) clearTimeout(positionSaveTimer);
+  positionSaveTimer = setTimeout(() => {
+    const c = loadConfig();
+    c.position = { x, y };
+    saveConfig(c);
+    positionSaveTimer = null;
+  }, 400);
+}
+
+export function applyAutoStartSetting(enabled: boolean): void {
+  if (process.platform !== "win32" && process.platform !== "darwin") return;
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    path: process.execPath,
+    args: app.isPackaged ? [] : [app.getAppPath()],
+  });
+}
 
 function distPath(...segments: string[]): string {
   return path.join(__dirname, "..", ...segments);
@@ -50,6 +95,19 @@ function sendPet(channel: string, payload?: unknown): void {
   petWindow?.webContents.send(channel, payload);
 }
 
+function workAreaForWindow(win: BrowserWindow | null) {
+  const bounds = win?.getBounds() ?? screen.getPrimaryDisplay().bounds;
+  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  return screen.getDisplayNearestPoint(center).workArea;
+}
+
+export function resizePetWindow(scale: number): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const w = Math.round(BASE_PET_WIDTH * scale);
+  const h = Math.round(BASE_PET_HEIGHT * scale);
+  petWindow.setSize(w, h);
+}
+
 function sendConfig(channel: string, payload?: unknown): void {
   configWindow?.webContents.send(channel, payload);
 }
@@ -60,16 +118,18 @@ export function createPetWindow(show = true): BrowserWindow | null {
 
   if (petWindow && !petWindow.isDestroyed()) {
     if (show) petWindow.show();
+    applyRuntimeFlags(config);
+    resizePetWindow(config.scale || 1);
     petWindow.webContents.send("pet:reload", serializePetConfig(config));
     return petWindow;
   }
 
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const pos = config.position ?? { x: width - 220, y: height - 260 };
+  const area = workAreaForWindow(null);
+  const pos = config.position ?? defaultPositionForConfig(config);
 
   petWindow = new BrowserWindow({
-    width: 280,
-    height: 320,
+    width: BASE_PET_WIDTH,
+    height: BASE_PET_HEIGHT,
     x: pos.x,
     y: pos.y,
     frame: false,
@@ -88,12 +148,13 @@ export function createPetWindow(show = true): BrowserWindow | null {
   });
 
   petWindow.webContents.on("did-finish-load", () => {
-    if (!app.isPackaged) {
+    if (shouldOpenDevTools()) {
       petWindow?.webContents.openDevTools({ mode: "detach" });
     }
   });
 
-  petWindow.setIgnoreMouseEvents(config.clickThrough, { forward: true });
+  applyRuntimeFlags(config);
+  resizePetWindow(config.scale || 1);
   petWindow.loadFile(distPath("renderer", "pet", "index.html"));
 
   petWindow.webContents.on("did-finish-load", () => {
@@ -103,9 +164,7 @@ export function createPetWindow(show = true): BrowserWindow | null {
   petWindow.on("moved", () => {
     if (!petWindow) return;
     const [x, y] = petWindow.getPosition();
-    const c = loadConfig();
-    c.position = { x, y };
-    saveConfig(c);
+    schedulePositionSave(x, y);
   });
 
   petWindow.on("closed", () => {
@@ -113,15 +172,23 @@ export function createPetWindow(show = true): BrowserWindow | null {
   });
 
   if (!show) petWindow.hide();
-  startFollowCursorLoop();
+  syncFollowCursorLoop();
   return petWindow;
 }
 
-function startFollowCursorLoop(): void {
-  if (followInterval) clearInterval(followInterval);
+function syncFollowCursorLoop(): void {
+  if (followInterval) {
+    clearInterval(followInterval);
+    followInterval = null;
+  }
+  const config = loadConfig();
+  if (!config.followMouse || !petWindow || petWindow.isDestroyed()) return;
+
   followInterval = setInterval(() => {
-    const config = loadConfig();
-    if (!petWindow || petWindow.isDestroyed() || !config.followMouse) return;
+    if (!petWindow || petWindow.isDestroyed()) return;
+    const cfg = loadConfig();
+    if (!cfg.followMouse) return;
+
     const cursor = screen.getCursorScreenPoint();
     const [wx, wy] = petWindow.getPosition();
     const ww = petWindow.getBounds().width;
@@ -132,10 +199,11 @@ function startFollowCursorLoop(): void {
     const dy = cursor.y - cy;
     const dist = Math.hypot(dx, dy);
     if (dist < 24) return;
-    const step = Math.min(12, dist * 0.08);
+
+    const step = Math.min(cfg.followSpeed ?? 12, dist * 0.08);
     const nx = Math.round(wx + (dx / dist) * step);
     const ny = Math.round(wy + (dy / dist) * step);
-    const area = screen.getDisplayNearestPoint(cursor).workArea;
+    const area = workAreaForWindow(petWindow);
     petWindow.setPosition(
       Math.max(area.x, Math.min(area.x + area.width - ww, nx)),
       Math.max(area.y, Math.min(area.y + area.height - wh, ny))
@@ -151,8 +219,8 @@ export function createConfigWindow(): BrowserWindow {
   }
 
   configWindow = new BrowserWindow({
-    width: 920,
-    height: 680,
+    width: 980,
+    height: 820,
     minWidth: 760,
     minHeight: 560,
     title: "Desktop Pet · 创建你的桌面宠物",
@@ -168,7 +236,7 @@ export function createConfigWindow(): BrowserWindow {
   configWindow.loadFile(distPath("renderer", "config", "index.html"));
 
   configWindow.webContents.on("did-finish-load", () => {
-    if (!app.isPackaged) {
+    if (shouldOpenDevTools()) {
       configWindow?.webContents.openDevTools({ mode: "detach" });
     }
   });
@@ -179,42 +247,18 @@ export function createConfigWindow(): BrowserWindow {
   return configWindow;
 }
 
-function serializePetConfig(config: PetConfig) {
-  const mapFrames = (paths: string[]) => paths.map((path) => ({ path }));
-  return {
-    ...config,
-    frames: {
-      idle: mapFrames(config.frames.idle),
-      click: mapFrames(config.frames.click),
-      walk: mapFrames(config.frames.walk),
-      drag: mapFrames(config.frames.drag),
-      sleep: mapFrames(config.frames.sleep),
-      happy: mapFrames(config.frames.happy),
-      sad: mapFrames(config.frames.sad),
-      eat: mapFrames(config.frames.eat),
-      angry: mapFrames(config.frames.angry),
-    },
-  };
+function defaultPositionForConfig(config: PetConfig): { x: number; y: number } {
+  const area = workAreaForWindow(null);
+  const displays = screen.getAllDisplays();
+  for (const d of displays) {
+    const key = String(d.id);
+    if (config.positionsByDisplay?.[key]) return config.positionsByDisplay[key];
+  }
+  return { x: area.x + area.width - 220, y: area.y + area.height - 260 };
 }
 
 function serializeConfigForRenderer(config: PetConfig) {
-  const mapFrames = (paths: string[]) =>
-    paths.map((p) => ({ path: p, url: fileUrlForRenderer(p) }));
-
-  return {
-    ...config,
-    frames: {
-      idle: mapFrames(config.frames.idle),
-      click: mapFrames(config.frames.click),
-      walk: mapFrames(config.frames.walk),
-      drag: mapFrames(config.frames.drag),
-      sleep: mapFrames(config.frames.sleep),
-      happy: mapFrames(config.frames.happy),
-      sad: mapFrames(config.frames.sad),
-      eat: mapFrames(config.frames.eat),
-      angry: mapFrames(config.frames.angry),
-    },
-  };
+  return serializePetConfig(config);
 }
 
 function applyRuntimeFlags(config: PetConfig): void {
@@ -222,6 +266,66 @@ function applyRuntimeFlags(config: PetConfig): void {
   petWindow.setAlwaysOnTop(config.alwaysOnTop, "screen-saver");
   petWindow.setIgnoreMouseEvents(config.clickThrough, { forward: true });
   petWindow.setFocusable(!config.clickThrough);
+  sendPet("pet:settings", {
+    clickThrough: config.clickThrough,
+    wander: config.wander,
+    followMouse: config.followMouse,
+  });
+}
+
+async function exportStickersMenu(): Promise<void> {
+  const cfg = loadConfig();
+  fs.mkdirSync(exportsDir(), { recursive: true });
+  const dest = path.join(exportsDir(), `${cfg.petName || "pet"}-stickers.zip`);
+  await exportStickerPack(cfg, dest);
+  await dialog.showMessageBox({ message: `贴纸包已保存：${dest}`, type: "info" });
+  shell.openPath(exportsDir());
+}
+
+async function diaryMenu(): Promise<void> {
+  const file = await renderDiaryCard(loadConfig());
+  await dialog.showMessageBox({ message: `日记卡片已生成：${file}`, type: "info" });
+  shell.showItemInFolder(file);
+}
+
+async function shareCreateMenu(): Promise<void> {
+  const cfg = loadConfig();
+  const { code, zipPath } = createSharePack(cfg.profileId, cfg.petName);
+  await dialog.showMessageBox({
+    message: `分享码：${code}\n文件：${zipPath}\n把分享码发给好友，在工坊「导入分享码」使用。`,
+    type: "info",
+  });
+}
+
+function showPetContextMenu(): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const config = loadConfig();
+  const menu = Menu.buildFromTemplate([
+    { label: "摸一摸 😊", click: () => sendPet("pet:action", { type: "pet" }) },
+    { label: "喂食 🍎", click: () => sendPet("pet:action", { type: "feed" }) },
+    { label: "陪玩 🎾", click: () => sendPet("pet:action", { type: "play" }) },
+    { label: "哄睡觉 💤", click: () => sendPet("pet:action", { type: "sleep" }) },
+    { label: "叫醒 ⏰", click: () => sendPet("pet:action", { type: "wake" }) },
+    { type: "separator" },
+    { label: "导出透明贴纸包", click: () => void exportStickersMenu() },
+    { label: "生成今日日记卡片", click: () => void diaryMenu() },
+    { label: "创建分享码", click: () => void shareCreateMenu() },
+    { type: "separator" },
+    { label: "编辑宠物", click: () => createConfigWindow() },
+    {
+      label: config.clickThrough ? "关闭鼠标穿透" : "开启鼠标穿透",
+      click: () => {
+        const c = loadConfig();
+        c.clickThrough = !c.clickThrough;
+        saveConfig(c);
+        applyRuntimeFlags(c);
+        rebuildTray(() => undefined);
+      },
+    },
+    { type: "separator" },
+    { label: "隐藏宠物", click: () => petWindow?.hide() },
+  ]);
+  menu.popup({ window: petWindow });
 }
 
 function rebuildTray(onReady: () => void): void {
@@ -233,21 +337,33 @@ function rebuildTray(onReady: () => void): void {
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
-  tray = new Tray(icon.isEmpty() ? nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-  ) : icon);
+  tray = new Tray(
+    icon.isEmpty()
+      ? nativeImage.createFromDataURL(
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+      : icon
+  );
 
   const config = loadConfig();
+  const profiles = listProfiles();
+  const profileMenu = profiles.map((p) => ({
+    label: p.name,
+    type: "radio" as const,
+    checked: p.id === config.profileId,
+    click: () => {
+      switchProfile(p.id);
+      const next = loadConfig();
+      if (isPetReady(next)) createPetWindow(true);
+      else petWindow?.close();
+      rebuildTray(onReady);
+    },
+  }));
+
   const menu = Menu.buildFromTemplate([
-    {
-      label: config.petName || "Desktop Pet",
-      enabled: false,
-    },
+    { label: config.petName || "Desktop Pet", enabled: false },
     { type: "separator" },
-    {
-      label: "显示/隐藏宠物",
-      click: () => togglePetVisibility(),
-    },
+    { label: "显示/隐藏宠物", click: () => togglePetVisibility() },
     {
       label: "跟随鼠标",
       type: "checkbox",
@@ -257,6 +373,19 @@ function rebuildTray(onReady: () => void): void {
         c.followMouse = item.checked;
         saveConfig(c);
         sendPet("pet:settings", { followMouse: c.followMouse });
+        syncFollowCursorLoop();
+        rebuildTray(onReady);
+      },
+    },
+    {
+      label: "开机自启",
+      type: "checkbox",
+      checked: config.autoStart,
+      click: (item) => {
+        const c = loadConfig();
+        c.autoStart = item.checked;
+        saveConfig(c);
+        applyAutoStartSetting(c.autoStart);
         rebuildTray(onReady);
       },
     },
@@ -297,40 +426,18 @@ function rebuildTray(onReady: () => void): void {
       },
     },
     { type: "separator" },
-    {
-      label: "摸一摸 😊",
-      click: () => sendPet("pet:action", { type: "pet" }),
-    },
-    {
-      label: "喂食 🍎",
-      click: () => sendPet("pet:action", { type: "feed" }),
-    },
-    {
-      label: "陪玩 🎾",
-      click: () => sendPet("pet:action", { type: "play" }),
-    },
-    {
-      label: "哄睡觉 💤",
-      click: () => sendPet("pet:action", { type: "sleep" }),
-    },
-    {
-      label: "叫醒 ⏰",
-      click: () => sendPet("pet:action", { type: "wake" }),
-    },
+    { label: "切换档案", submenu: profileMenu },
+    { label: "摸一摸 😊", click: () => sendPet("pet:action", { type: "pet" }) },
+    { label: "喂食 🍎", click: () => sendPet("pet:action", { type: "feed" }) },
+    { label: "陪玩 🎾", click: () => sendPet("pet:action", { type: "play" }) },
+    { label: "哄睡觉 💤", click: () => sendPet("pet:action", { type: "sleep" }) },
+    { label: "叫醒 ⏰", click: () => sendPet("pet:action", { type: "wake" }) },
     { type: "separator" },
-    {
-      label: "编辑宠物 / 上传图片",
-      click: () => createConfigWindow(),
-    },
-    {
-      label: "打开图片目录",
-      click: () => shell.openPath(getImagesDir()),
-    },
+    { label: "陪伴统计", click: () => openStatsPanel() },
+    { label: "编辑宠物 / 上传图片", click: () => createConfigWindow() },
+    { label: "打开图片目录", click: () => shell.openPath(getImagesDir()) },
     { type: "separator" },
-    {
-      label: "退出",
-      click: () => app.quit(),
-    },
+    { label: "退出", click: () => app.quit() },
   ]);
 
   tray.setToolTip(`${config.petName} · 桌面宠物`);
@@ -347,18 +454,76 @@ function togglePetVisibility(): void {
   else petWindow.show();
 }
 
+export function registerGlobalShortcuts(): void {
+  globalShortcut.unregisterAll();
+  const shortcuts: Array<[string, () => void]> = [
+    ["CommandOrControl+Shift+P", () => togglePetVisibility()],
+    ["CommandOrControl+Shift+F", () => sendPet("pet:action", { type: "feed" })],
+    ["CommandOrControl+Shift+H", () => sendPet("pet:action", { type: "pet" })],
+    ["CommandOrControl+Shift+E", () => createConfigWindow()],
+  ];
+  for (const [accel, fn] of shortcuts) {
+    try {
+      globalShortcut.register(accel, fn);
+    } catch (err) {
+      console.warn("[desktop-pet] shortcut register failed:", accel, err);
+    }
+  }
+}
+
+export function unregisterGlobalShortcuts(): void {
+  globalShortcut.unregisterAll();
+}
+
 export function registerIpc(onReady: () => void): void {
   ipcMain.on("app:log", (_e, message: string) => {
     console.log("[renderer]", message);
   });
 
-  ipcMain.handle("media:get-image-url", (_e, filePath: string) =>
-    fileUrlForRenderer(filePath)
-  );
+  ipcMain.handle("media:get-image-url", (_e, filePath: string) => {
+    const cfg = loadConfig();
+    const cached = frameCacheGet(filePath);
+    if (cached) return cached;
+    const url = fileUrlForRenderer(filePath);
+    frameCacheSet(filePath, url, cfg.frameCacheMax || 120);
+    return url;
+  });
 
   ipcMain.handle("pet:get-config", () => serializePetConfig(loadConfig()));
-
   ipcMain.handle("config:get", () => serializePetConfig(loadConfig()));
+
+  ipcMain.handle("pet:get-bounds", (_e, pos?: { x: number; y: number }) => {
+    if (pos && typeof pos.x === "number") {
+      return screen.getDisplayNearestPoint(pos).workArea;
+    }
+    return workAreaForWindow(petWindow);
+  });
+
+  ipcMain.handle("pet:save-affection", (_e, value: number) => {
+    const c = loadConfig();
+    c.affection = Math.max(0, Math.min(100, Math.round(value)));
+    saveConfig(c);
+  });
+
+  ipcMain.handle("pet:save-scale", (_e, scale: number) => {
+    const c = loadConfig();
+    c.scale = scale;
+    saveConfig(c);
+    resizePetWindow(scale);
+  });
+
+  ipcMain.handle("pet:set-click-through", (_e, enabled: boolean) => {
+    if (!petWindow || petWindow.isDestroyed()) return;
+    petWindow.setIgnoreMouseEvents(enabled, { forward: true });
+  });
+
+  ipcMain.on("pet:context-menu", () => showPetContextMenu());
+
+  ipcMain.handle("pet:set-wallpaper", async (_e, filePath: string) => {
+    if (!filePath) return { ok: false };
+    const ok = await setDesktopWallpaper(filePath);
+    return { ok };
+  });
 
   ipcMain.handle("config:pick-images", async () => {
     const parent =
@@ -386,23 +551,140 @@ export function registerIpc(onReady: () => void): void {
     return { canceled: false, items };
   });
 
+  ipcMain.handle("config:pick-media", async () => {
+    const parent =
+      configWindow && !configWindow.isDestroyed() ? configWindow : null;
+    const options: OpenDialogOptions = {
+      title: "选择 GIF 或视频",
+      properties: ["openFile"],
+      filters: [
+        { name: "Media", extensions: ["gif", "mp4", "webm", "mov", "mkv"] },
+      ],
+    };
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { canceled: true, paths: [] as string[] };
+    return { canceled: false, paths: result.filePaths };
+  });
+
+  ipcMain.handle(
+    "config:extract-frames",
+    async (_e, payload: { sourcePath: string; fps?: number; maxFrames?: number }) => {
+      const tempDir = path.join(os.tmpdir(), `desktop-pet-extract-${Date.now()}`);
+      fs.mkdirSync(tempDir, { recursive: true });
+      try {
+        let frames: string[] = [];
+        if (isGifFile(payload.sourcePath)) {
+          frames = await extractGifFrames(payload.sourcePath, tempDir, payload.maxFrames ?? 60);
+        } else if (isVideoFile(payload.sourcePath)) {
+          frames = extractVideoFrames(
+            payload.sourcePath,
+            tempDir,
+            payload.fps ?? 8,
+            payload.maxFrames ?? 60
+          );
+        } else {
+          throw new Error("不支持的文件格式");
+        }
+        return { ok: true, frames };
+      } catch (err) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  ipcMain.handle("profiles:list", () => ({
+    profiles: listProfiles(),
+    activeId: loadConfig().profileId,
+  }));
+
+  ipcMain.handle("profiles:create", (_e, name: string) => {
+    const info = createProfile(name);
+    switchProfile(info.id);
+    return { ok: true, profile: info };
+  });
+
+  ipcMain.handle("profiles:switch", (_e, profileId: string) => {
+    const ok = switchProfile(profileId);
+    if (ok && isPetReady(loadConfig())) createPetWindow(true);
+    rebuildTray(onReady);
+    return { ok, config: serializeConfigForRenderer(loadConfig()) };
+  });
+
+  ipcMain.handle("profiles:rename", (_e, payload: { id: string; name: string }) => ({
+    ok: renameProfile(payload.id, payload.name),
+  }));
+
+  ipcMain.handle("profiles:delete", (_e, profileId: string) => {
+    const ok = deleteProfile(profileId);
+    if (ok) rebuildTray(onReady);
+    return { ok };
+  });
+
+  ipcMain.handle("profiles:export", async (_e, profileId?: string) => {
+    const id = profileId ?? loadConfig().profileId;
+    const parent = configWindow && !configWindow.isDestroyed() ? configWindow : undefined;
+    const result = parent
+      ? await dialog.showSaveDialog(parent, {
+          title: "导出宠物包",
+          defaultPath: `${loadConfig().petName || "pet"}.zip`,
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        })
+      : await dialog.showSaveDialog({
+          title: "导出宠物包",
+          defaultPath: "pet.zip",
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        });
+    if (result.canceled || !result.filePath) return { ok: false };
+    exportProfileZip(id, result.filePath);
+    return { ok: true, path: result.filePath };
+  });
+
+  ipcMain.handle("profiles:import", async () => {
+    const parent = configWindow && !configWindow.isDestroyed() ? configWindow : undefined;
+    const result = parent
+      ? await dialog.showOpenDialog(parent, {
+          properties: ["openFile"],
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        })
+      : await dialog.showOpenDialog({
+          properties: ["openFile"],
+          filters: [{ name: "ZIP", extensions: ["zip"] }],
+        });
+    if (result.canceled || !result.filePaths[0]) return { ok: false };
+    const info = importProfileZip(result.filePaths[0]);
+    switchProfile(info.id);
+    rebuildTray(onReady);
+    return { ok: true, profile: info, config: serializeConfigForRenderer(loadConfig()) };
+  });
+
   ipcMain.handle(
     "config:save",
-    async (_e, payload: { config: Partial<PetConfig>; assignments?: Array<{ sourcePath: string; state: PetState }> }) => {
+    async (
+      _e,
+      payload: {
+        config: Partial<PetConfig>;
+        assignments?: Array<{ sourcePath: string; state: PetState }>;
+        importOptions?: ImageImportOptions;
+      }
+    ) => {
       const current = loadConfig();
       let frames = current.frames;
+      const importOpts = payload.importOptions ?? payload.config.importOptions ?? current.importOptions;
 
       if (payload.assignments?.length) {
         const mode = payload.config.animationMode ?? current.animationMode ?? "flipbook";
+        const copied: Array<{ destPath: string; state: PetState }> = [];
+        for (const a of payload.assignments) {
+          const destPath = await copyImageToStore(a.sourcePath, importOpts);
+          copied.push({ destPath, state: a.state });
+        }
         if (mode === "flipbook") {
-          const paths = payload.assignments.map((a) => copyImageToStore(a.sourcePath));
-          frames = buildFlipbookFrames(paths);
+          frames = buildFlipbookFrames(copied.map((c) => c.destPath));
         } else {
-          const mapped = payload.assignments.map((a) => ({
-            destPath: copyImageToStore(a.sourcePath),
-            state: a.state,
-          }));
-          frames = buildFramesFromAssignments(mapped);
+          frames = buildFramesFromAssignments(copied);
         }
       }
 
@@ -410,15 +692,21 @@ export function registerIpc(onReady: () => void): void {
         ...current,
         ...payload.config,
         frames,
+        importOptions: importOpts,
         version: 1,
       };
       saveConfig(next);
+      applyAutoStartSetting(Boolean(next.autoStart));
+      syncMultiPetWindows(next.multiPetProfileIds || [], next.profileId);
 
       if (isPetReady(next)) {
         createPetWindow(true);
         applyRuntimeFlags(next);
+        syncFollowCursorLoop();
+        sendPet("pet:reload", serializePetConfig(next));
       }
       rebuildTray(onReady);
+      sendConfig("config:profile-changed", serializeConfigForRenderer(next));
       return {
         ok: true,
         summary: describeAutoResult(next.frames),
@@ -442,6 +730,7 @@ export function registerIpc(onReady: () => void): void {
       sad: [],
       eat: [],
       angry: [],
+      special: [],
     };
     saveConfig(config);
     petWindow?.close();
@@ -458,27 +747,21 @@ export function registerIpc(onReady: () => void): void {
 
   ipcMain.handle("pet:save-position", (_e, pos: { x: number; y: number }) => {
     const c = loadConfig();
+    const display = screen.getDisplayNearestPoint(pos);
     c.position = pos;
+    c.positionsByDisplay = c.positionsByDisplay || {};
+    c.positionsByDisplay[String(display.id)] = pos;
     saveConfig(c);
-  });
-
-  ipcMain.handle("pet:save-scale", (_e, scale: number) => {
-    const c = loadConfig();
-    c.scale = scale;
-    saveConfig(c);
-  });
-
-  ipcMain.handle("pet:get-bounds", () => {
-    const display = screen.getPrimaryDisplay().workArea;
-    return display;
   });
 }
 
 export function bootstrapWindows(onReady: () => void): void {
-  rebuildTray(onReady);
   const config = loadConfig();
+  applyAutoStartSetting(Boolean(config.autoStart));
+  rebuildTray(onReady);
   if (isPetReady(config)) {
     createPetWindow(true);
+    syncMultiPetWindows(config.multiPetProfileIds || [], config.profileId);
   } else {
     createConfigWindow();
   }
