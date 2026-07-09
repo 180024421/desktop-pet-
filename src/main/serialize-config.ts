@@ -1,11 +1,14 @@
 import { PetConfig } from "./types";
 import { fileUrlForRenderer } from "./protocol";
+import { serializeSpriteSheet } from "./sprite-sheet";
 
 export function serializePetConfig(config: PetConfig) {
   const mapFrames = (paths: string[]) =>
     paths.map((p) => ({ path: p, url: fileUrlForRenderer(p) }));
+  const sheet = serializeSpriteSheet(config.spriteSheet);
   return {
     ...config,
+    spriteSheet: sheet,
     frames: {
       idle: mapFrames(config.frames.idle),
       click: mapFrames(config.frames.click),

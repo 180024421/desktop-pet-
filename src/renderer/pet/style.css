@@ -19,9 +19,11 @@ body {
   height: 100%;
   position: relative;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   padding-bottom: 8px;
+  gap: 4px;
 }
 
 #pet-scale {
@@ -45,6 +47,28 @@ body {
 
 #pet-img.dragging {
   cursor: grabbing;
+}
+
+#pet-canvas {
+  display: block;
+  width: 72px;
+  height: 66px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: grab;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.18));
+}
+
+#pet-canvas.dragging {
+  cursor: grabbing;
+}
+
+#pet-canvas.hidden {
+  display: none !important;
+}
+
+#pet-img.hidden {
+  display: none !important;
 }
 
 #pet-img.effect-breathe {

@@ -6,6 +6,7 @@ import {
   PetConfig,
   cloneConfig,
   hasAnyFrame,
+  isPetRenderable,
 } from "./types";
 import {
   buildFlipbookFrames,
@@ -37,11 +38,38 @@ function resolveFramePaths(config: PetConfig): PetConfig {
       return path.isAbsolute(p) ? p : path.join(base, p.replace(/\//g, path.sep));
     });
   }
+  if (next.spriteSheet?.imagePath && !path.isAbsolute(next.spriteSheet.imagePath)) {
+    next.spriteSheet = {
+      ...next.spriteSheet,
+      imagePath: path.join(base, next.spriteSheet.imagePath.replace(/\//g, path.sep)),
+    };
+  }
   return next;
 }
 
 export function loadConfig(): PetConfig {
   return loadConfigForProfile(getActiveProfileId());
+}
+
+function hasAiImportFrames(frames: PetConfig["frames"]): boolean {
+  return Object.values(frames).some((list) =>
+    list.some((p: string) => String(p).includes("ai-import"))
+  );
+}
+
+function migrateRenderMode(config: PetConfig, raw: Partial<PetConfig>): PetConfig {
+  const next = config;
+  const aiImport = hasAiImportFrames(next.frames);
+  if (aiImport) {
+    next.renderMode = "flipbook";
+    next.shimejiMode = false;
+    next.bongoMode = false;
+    return next;
+  }
+  if (raw.renderMode === undefined || raw.renderMode === null) {
+    next.renderMode = hasAnyFrame(next.frames) ? "flipbook" : "pixel";
+  }
+  return next;
 }
 
 export function loadConfigForProfile(profileId: string): PetConfig {
@@ -60,7 +88,14 @@ export function loadConfigForProfile(profileId: string): PetConfig {
       profileId,
       frames: { ...cloneConfig(DEFAULT_CONFIG).frames, ...(raw.frames || {}) },
     };
-    return normalizeAnimation(resolveFramePaths(merged));
+    const normalized = normalizeAnimation(migrateRenderMode(resolveFramePaths(merged), raw));
+    if (hasAiImportFrames(raw.frames || merged.frames)) {
+      const persisted = { ...raw, renderMode: "flipbook", shimejiMode: false, bongoMode: false, profileId, version: 1 };
+      if (raw.renderMode !== "flipbook" || raw.shimejiMode !== false) {
+        fs.writeFileSync(file, JSON.stringify(persisted, null, 2), "utf-8");
+      }
+    }
+    return normalized;
   } catch {
     const cfg = cloneConfig(DEFAULT_CONFIG);
     cfg.profileId = profileId;
@@ -92,7 +127,7 @@ export function saveConfig(config: PetConfig): void {
 }
 
 export function isPetReady(config: PetConfig): boolean {
-  return hasAnyFrame(config.frames);
+  return isPetRenderable(config);
 }
 
 export async function copyImageToStore(
@@ -104,12 +139,15 @@ export async function copyImageToStore(
   if (normalized.startsWith(path.resolve(dir))) return normalized;
 
   const ext = path.extname(sourcePath).toLowerCase() || ".png";
-  const usePng = importOptions?.chromakey || importOptions?.trimTransparent;
+  const usePng = importOptions?.chromakey || importOptions?.trimTransparent || importOptions?.useRembg;
   const outExt = usePng ? ".png" : ext;
   const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${outExt}`;
   const dest = path.join(dir, name);
 
-  if (importOptions && (importOptions.trimTransparent || importOptions.chromakey)) {
+  if (
+    importOptions &&
+    (importOptions.trimTransparent || importOptions.chromakey || importOptions.useRembg)
+  ) {
     await processImageFile(sourcePath, dest, importOptions);
   } else {
     fs.copyFileSync(sourcePath, dest);

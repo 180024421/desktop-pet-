@@ -9,7 +9,8 @@
 <body>
   <div id="root" class="mode-full" role="img" aria-label="桌面宠物">
     <div id="pet-scale">
-      <img id="pet-img" alt="pet" draggable="false" />
+      <canvas id="pet-canvas" class="hidden" width="72" height="66"></canvas>
+      <img id="pet-img" alt="pet" draggable="false" class="hidden" />
     </div>
     <button id="drag-handle" type="button" class="hidden" title="拖拽移动" aria-label="拖拽手柄">⠿</button>
     <div id="bubble" class="hidden" role="status" aria-live="polite"></div>
@@ -22,6 +23,11 @@
     </div>
     <div id="hint">滚轮缩放 · 右键菜单 · Ctrl+Shift+P 显示/隐藏</div>
   </div>
+  <script src="pixel-pet.js"></script>
+  <script src="sprite-sheet.js"></script>
+  <script src="shimeji.js"></script>
+  <script src="bongo.js"></script>
+  <script src="pet-render.js"></script>
   <script src="pet.js"></script>
   <script src="pet-extras.js"></script>
   <script src="pet-features.js"></script>

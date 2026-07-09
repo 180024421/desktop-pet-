@@ -21,11 +21,9 @@ import { fetchWeather } from "./weather";
 import {
 
   officeBridgePhrase,
-
   officeBridgePetHint,
-
   writeOfficeBuddyPetPet,
-
+  readOfficeBuddyStats,
 } from "./office-bridge";
 
 import {
@@ -242,6 +240,7 @@ export function registerFeatureIpc(): void {
 
 
   ipcMain.handle("features:office-bridge", () => officeBridgePhrase());
+  ipcMain.handle("features:office-bridge-stats", () => readOfficeBuddyStats());
 
   ipcMain.handle("features:office-hint", () => officeBridgePetHint());
 

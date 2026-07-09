@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("petApi", {
   unlockTier: (tier: number) => ipcRenderer.invoke("pet:unlock-tier", tier),
   fetchWeather: (city?: string) => ipcRenderer.invoke("features:weather", city),
   officeBridge: () => ipcRenderer.invoke("features:office-bridge"),
+  officeBridgeStats: () => ipcRenderer.invoke("features:office-bridge-stats"),
   reportPosition: (report: unknown) => ipcRenderer.invoke("pet:report-position", report),
   lmStudioPhrase: () => ipcRenderer.invoke("features:lmstudio-phrase"),
   pluginPhrases: (category: string) => ipcRenderer.invoke("features:plugin-phrases", category),

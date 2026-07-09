@@ -99,7 +99,39 @@
     dragHandle?.classList.toggle("hidden", !on);
   }
 
+  function isAltRender(cfg = config) {
+    const m = cfg?.renderMode || "flipbook";
+    return m === "pixel" || m === "spritesheet";
+  }
+
+  function syncAltSurface(cfg = config) {
+    if (!img) return;
+    const canvasEl = document.getElementById("pet-canvas");
+    if (isAltRender(cfg)) {
+      img.classList.add("hidden");
+      img.removeAttribute("src");
+      if (canvasEl) canvasEl.classList.remove("hidden");
+    } else {
+      img.classList.remove("hidden");
+      if (canvasEl) canvasEl.classList.add("hidden");
+    }
+  }
+
+  function drawPixelFallback(skin = "cat") {
+    const canvasEl = document.getElementById("pet-canvas");
+    if (!canvasEl || !window.PixelPetRenderer) return;
+    try {
+      const renderer = new PixelPetRenderer(canvasEl, skin);
+      renderer.drawFrame("idle", 0);
+      canvasEl.classList.remove("hidden");
+      if (img) img.classList.add("hidden");
+    } catch (err) {
+      console.error("[pet] pixel fallback failed", err);
+    }
+  }
+
   async function preloadAllFrames() {
+    if (isAltRender()) return;
     if (!config?.frames) return;
     const seen = new Set();
     const tasks = [];
@@ -149,6 +181,9 @@
 
   function framesFor(state) {
     if (!config) return [];
+    if (isAltRender()) return [{ path: "pixel", url: "" }];
+    const alt = window.PetRender?.framesForState?.(config, state);
+    if (alt !== null && alt !== undefined) return alt;
     if (isFlipbook() && state !== "sleep") {
       let idle = config.frames.idle;
       if (idle?.length >= 2) {
@@ -174,6 +209,7 @@
   }
 
   function showFrameInstant(state, index) {
+    if (isAltRender()) return;
     const list = framesFor(state);
     if (!list.length || !img) return;
     const item = list[index % list.length];
@@ -216,6 +252,7 @@
   }
 
   async function setImage(state, index = 0) {
+    if (isAltRender()) return;
     const list = framesFor(state);
     if (!list.length || !img) return;
     const item = list[index % list.length];
@@ -225,7 +262,12 @@
       return;
     }
     img.onload = null;
-    img.onerror = () => console.error("[pet] image failed", item.path);
+    img.onerror = () => {
+      console.error("[pet] image failed", item.path, url);
+      if (config?.renderMode === "flipbook" && config?.frames?.idle?.length) {
+        drawPixelFallback(config.pixelSkin || "cat");
+      }
+    };
     img.src = url;
   }
 
@@ -234,6 +276,7 @@
     if (stateTimer) clearTimeout(stateTimer);
     frameTimer = null;
     stateTimer = null;
+    window.PetRender?.clearTimers?.();
   }
 
   function applyCssEffect() {
@@ -291,6 +334,25 @@
     }
 
     void (async () => {
+      if (isAltRender()) {
+        syncAltSurface(config);
+        applyCssEffect();
+        window.PetRender?.drawState?.(state);
+        const syncBubble = config?.syncBubbleWithState !== false;
+        const category =
+          showBubbleNow === false
+            ? null
+            : bubbleCategory ?? (syncBubble ? bubbleCategoryForState(state) : null);
+        if (category) showBubble(category);
+        if (shouldRevert && duration > 0) {
+          stateTimer = setTimeout(() => {
+            if (token !== actionToken) return;
+            actionLockUntil = 0;
+            playState("idle", 0, false, { force: true, showBubbleNow: false });
+          }, duration);
+        }
+        return;
+      }
       await preloadFrames(state);
       if (token !== actionToken) return;
       showFrameInstant(state, 0);
@@ -365,6 +427,7 @@
     if (e.button !== 0) return;
     isDragging = true;
     img.classList.add("dragging");
+    if (e.target?.id === "pet-canvas") e.target.classList.add("dragging");
     dragOffset = { x: e.screenX - window.screenX, y: e.screenY - window.screenY };
     if (clickThroughActive) petApi?.setClickThrough?.(false);
     playState("drag", 99999, false, { force: true, showBubbleNow: false });
@@ -388,6 +451,7 @@
     if (!isDragging) return;
     isDragging = false;
     img.classList.remove("dragging");
+    document.getElementById("pet-canvas")?.classList.remove("dragging");
     if (clickThroughActive) petApi?.setClickThrough?.(true);
     void snapToScreenEdges();
     petApi?.savePosition?.({ x: window.screenX, y: window.screenY });
@@ -398,14 +462,19 @@
   }
 
   function setupDrag() {
-    img.addEventListener("mousedown", beginDrag);
+    const onDown = (e) => {
+      if (e.target !== img && e.target?.id !== "pet-canvas") return;
+      beginDrag(e);
+    };
+    scaleWrap?.addEventListener("mousedown", onDown);
     dragHandle?.addEventListener("mousedown", beginDrag);
     window.addEventListener("mousemove", moveDrag);
     window.addEventListener("mouseup", endDrag);
   }
 
   function setupClicks() {
-    img.addEventListener("click", (e) => {
+    const onClick = (e) => {
+      if (e.target !== img && e.target?.id !== "pet-canvas") return;
       if (isDragging) return;
       if (singleClickTimer) clearTimeout(singleClickTimer);
       singleClickTimer = setTimeout(() => {
@@ -421,32 +490,37 @@
         resetIdleSleep();
       }, 280);
       e.stopPropagation();
-    });
+    };
+    scaleWrap?.addEventListener("click", onClick);
 
-    img.addEventListener("dblclick", (e) => {
+    const onDblClick = (e) => {
+      if (e.target !== img && e.target?.id !== "pet-canvas") return;
       if (isDragging) return;
       if (singleClickTimer) {
         clearTimeout(singleClickTimer);
         singleClickTimer = null;
       }
-      playState("happy", cycleDuration("happy"), true, {
+      playState("special", cycleDuration("special"), true, {
         force: true,
-        bubbleCategory: "happy",
+        bubbleCategory: "special",
       });
       flashAnim("jump");
       bumpAffection(5);
       noteInteract("play");
       e.stopPropagation();
-    });
+    };
+    scaleWrap?.addEventListener("dblclick", onDblClick);
 
-    img.addEventListener("contextmenu", (e) => {
+    scaleWrap?.addEventListener("contextmenu", (e) => {
+      if (e.target !== img && e.target?.id !== "pet-canvas") return;
       e.preventDefault();
       petApi?.showContextMenu?.();
     });
 
-    img.addEventListener(
+    scaleWrap?.addEventListener(
       "wheel",
       (e) => {
+        if (e.target !== img && e.target?.id !== "pet-canvas") return;
         e.preventDefault();
         scale = Math.max(0.5, Math.min(2.2, scale + (e.deltaY > 0 ? -0.08 : 0.08)));
         applyScale();
@@ -476,6 +550,11 @@
 
   function startWander() {
     if (wanderTimer) clearInterval(wanderTimer);
+    if (config?.shimejiMode && !config?.wander) {
+      window.PetRender?.restartMovement?.(config);
+      return;
+    }
+    window.PetRender?.getShimeji?.()?.stop?.();
     const interval = config?.wanderIntervalMs ?? 8000;
     wanderTimer = setInterval(() => {
       if (!config?.wander || !canAutoSwitchState() || config.followMouse) return;
@@ -500,6 +579,7 @@
       playState("eat", cycleDuration("eat"), true, { force: true, bubbleCategory: "feed" });
       bumpAffection(8);
       noteInteract("feed");
+    } else if (type === "play") {
       playState("happy", cycleDuration("happy"), true, { force: true, bubbleCategory: "play" });
       bumpAffection(6);
       noteInteract("play");
@@ -511,10 +591,25 @@
       playState("idle", 0, false, { force: true, bubbleCategory: "wake" });
       flashAnim("jump");
     } else if (type === "pet") {
-      playState("happy", cycleDuration("happy"), true, { force: true, bubbleCategory: "pet" });
+      playState("click", cycleDuration("click"), true, { force: true, bubbleCategory: "pet" });
       bumpAffection(4);
       noteInteract("pet");
     }
+  }
+
+  async function showFlipbookFrame(state, index = 0) {
+    if (isAltRender()) return false;
+    const list = framesFor(state);
+    if (!list.length || !img) return false;
+    syncAltSurface(config);
+    const item = list[index % list.length];
+    const url = item.url || imageCache.get(item.path) || (await resolveImageUrl(item));
+    if (!url) {
+      console.error("[pet] no url for frame", item.path);
+      return false;
+    }
+    img.src = url;
+    return true;
   }
 
   function applyConfig(next) {
@@ -532,12 +627,30 @@
       root.classList.toggle(`bubble-style-${next.bubbleStyle || "round"}`, true);
       root.setAttribute("aria-label", next.petName || "桌面宠物");
     }
+    syncAltSurface(next);
     void (async () => {
+      const alt = isAltRender(next);
+      if (!alt) {
+        const shown = await showFlipbookFrame("idle", 0);
+        if (!shown) drawPixelFallback(config?.pixelSkin || "cat");
+      }
+      if (alt) {
+        window.PetRender?.applyConfig?.(config, img);
+        playState("idle", 0, false, { force: true, showBubbleNow: false });
+        resetIdleSleep();
+        startWander();
+        startAmbientShowcase();
+        window.PetRender?.restartMovement?.(config);
+        features?.onConfigApplied?.();
+        return;
+      }
       await preloadAllFrames();
+      window.PetRender?.applyConfig?.(config, img);
       playState("idle", 0, false, { force: true, showBubbleNow: false });
       resetIdleSleep();
       startWander();
       startAmbientShowcase();
+      window.PetRender?.restartMovement?.(config);
       features?.onConfigApplied?.();
     })();
   }
@@ -564,9 +677,18 @@
 
   async function boot() {
     if (!petApi) {
-      console.error("[pet] petApi missing");
+      drawPixelFallback("cat");
+      console.error("[pet] petApi missing — pixel fallback only");
       return;
     }
+    window.PetRender?.initBridge?.({
+      scaleWrap,
+      img,
+      petApi,
+      getConfig: () => config,
+      playState,
+      savePosition: (p) => petApi?.savePosition?.(p),
+    });
     setupDrag();
     setupClicks();
     initFeaturesBridge();
@@ -596,6 +718,7 @@
       applyConfig(data);
     } catch (err) {
       console.error("[pet] load config failed", err);
+      drawPixelFallback("cat");
     }
   }
 

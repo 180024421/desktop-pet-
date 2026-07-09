@@ -2,6 +2,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { ChromakeyOptions, ImageImportOptions } from "./types";
+import { runRembg } from "./sprite-sheet";
 
 let sharpModule: typeof import("sharp") | null = null;
 
@@ -70,6 +71,10 @@ async function trimTransparent(inputPath: string, outputPath: string): Promise<v
   await sharp(inputPath).trim().png().toFile(outputPath);
 }
 
+async function applyRembg(inputPath: string, outputPath: string): Promise<boolean> {
+  return runRembg(inputPath, outputPath);
+}
+
 export async function processImageFile(
   sourcePath: string,
   destPath: string,
@@ -80,6 +85,14 @@ export async function processImageFile(
 
   try {
     if (
+      options.useRembg &&
+      [".png", ".jpg", ".jpeg", ".webp"].includes(path.extname(sourcePath).toLowerCase())
+    ) {
+      const rembgOut = `${destPath}.rembg.png`;
+      tempFiles.push(rembgOut);
+      const ok = await applyRembg(sourcePath, rembgOut);
+      if (ok) working = rembgOut;
+    } else if (
       options.chromakey &&
       [".png", ".jpg", ".jpeg", ".webp"].includes(path.extname(sourcePath).toLowerCase())
     ) {

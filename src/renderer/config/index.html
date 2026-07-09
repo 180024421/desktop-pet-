@@ -83,6 +83,35 @@
     </section>
 
     <section class="card settings">
+      <h2>渲染模式（v1.4）</h2>
+      <div class="grid">
+        <label>渲染方式
+          <select id="render-mode">
+            <option value="pixel">像素程序化（推荐，无需图片）</option>
+            <option value="spritesheet">精灵图 Sprite Sheet</option>
+            <option value="flipbook">连续帧 / 多图（传统）</option>
+          </select>
+        </label>
+        <label>像素皮肤
+          <select id="pixel-skin">
+            <option value="cat">像素猫</option>
+            <option value="dog">像素狗</option>
+            <option value="blob">史莱姆</option>
+          </select>
+        </label>
+      </div>
+      <div class="tool-row">
+        <button id="btn-pick-sprite-sheet" type="button" class="btn secondary">导入精灵图 (PNG + JSON)</button>
+        <span id="sprite-sheet-status" class="muted">未导入精灵图</span>
+      </div>
+      <div class="toggles">
+        <label><input id="toggle-shimeji" type="checkbox" checked /> Shimeji 贴边爬行（关闭漫游时生效）</label>
+        <label><input id="toggle-bongo" type="checkbox" checked /> Bongo 打字联动（需 Office Buddy）</label>
+        <label><input id="toggle-rembg" type="checkbox" /> 导入时用 rembg AI 抠图（需 python rembg）</label>
+      </div>
+    </section>
+
+    <section class="card settings">
       <h2>基础设置</h2>
       <div class="grid">
         <label>宠物名字 <input id="pet-name" type="text" placeholder="小宠物" /></label>

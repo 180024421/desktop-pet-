@@ -21,6 +21,7 @@ import {
   describeAutoResult,
 } from "./imageClassifier";
 import { extractGifFrames, extractVideoFrames, isGifFile, isVideoFile } from "./imageProcessor";
+import { importSpriteSheetFiles, serializeSpriteSheet } from "./sprite-sheet";
 import {
   copyImageToStore,
   createProfile,
@@ -134,6 +135,7 @@ export function createPetWindow(show = true): BrowserWindow | null {
     y: pos.y,
     frame: false,
     transparent: true,
+    backgroundColor: "#00000000",
     resizable: false,
     hasShadow: false,
     skipTaskbar: true,
@@ -568,6 +570,45 @@ export function registerIpc(onReady: () => void): void {
     return { canceled: false, paths: result.filePaths };
   });
 
+  ipcMain.handle("config:pick-sprite-sheet", async () => {
+    const parent =
+      configWindow && !configWindow.isDestroyed() ? configWindow : null;
+    const pngOpts: OpenDialogOptions = {
+      title: "选择精灵图 PNG",
+      properties: ["openFile"],
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    };
+    const pngResult = parent
+      ? await dialog.showOpenDialog(parent, pngOpts)
+      : await dialog.showOpenDialog(pngOpts);
+    if (pngResult.canceled || !pngResult.filePaths[0]) return { canceled: true };
+    const jsonOpts: OpenDialogOptions = {
+      title: "选择精灵图 JSON 描述",
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    };
+    const jsonResult = parent
+      ? await dialog.showOpenDialog(parent, jsonOpts)
+      : await dialog.showOpenDialog(jsonOpts);
+    if (jsonResult.canceled || !jsonResult.filePaths[0]) {
+      return { canceled: false, ok: false, reason: "未选择 JSON 文件" };
+    }
+    try {
+      const sheet = importSpriteSheetFiles(pngResult.filePaths[0], jsonResult.filePaths[0]);
+      return {
+        canceled: false,
+        ok: true,
+        spriteSheet: serializeSpriteSheet(sheet),
+      };
+    } catch (err) {
+      return {
+        canceled: false,
+        ok: false,
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
   ipcMain.handle(
     "config:extract-frames",
     async (_e, payload: { sourcePath: string; fps?: number; maxFrames?: number }) => {
@@ -692,6 +733,7 @@ export function registerIpc(onReady: () => void): void {
         ...current,
         ...payload.config,
         frames,
+        spriteSheet: payload.config.spriteSheet ?? current.spriteSheet,
         importOptions: importOpts,
         version: 1,
       };

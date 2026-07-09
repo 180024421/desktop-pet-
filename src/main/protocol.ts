@@ -42,12 +42,13 @@ export function setupPetProtocolHandler(): void {
 export function fileUrlForRenderer(absPath: string): string {
   if (!absPath) return "";
   try {
-    if (!fs.existsSync(absPath)) {
-      console.warn("[desktop-pet] image missing:", absPath);
+    const normalized = path.resolve(absPath);
+    if (!fs.existsSync(normalized)) {
+      console.warn("[desktop-pet] image missing:", normalized);
       return "";
     }
-    const normalized = path.resolve(absPath).replace(/\\/g, "/");
-    return `${SCHEME}://local/${encodeURIComponent(normalized)}`;
+    const posix = normalized.replace(/\\/g, "/");
+    return `${SCHEME}://local/${encodeURI(posix)}`;
   } catch (err) {
     console.error("[desktop-pet] file url failed:", absPath, err);
     return "";

@@ -27,6 +27,24 @@ export type PhraseCategory =
 
 export type DisplayMode = "full" | "pet-only" | "widget";
 
+export type RenderMode = "flipbook" | "pixel" | "spritesheet";
+
+export type PixelSkin = "cat" | "dog" | "blob";
+
+export interface SpriteFrameRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SpriteSheetConfig {
+  imagePath: string;
+  frameWidth: number;
+  frameHeight: number;
+  states: Partial<Record<PetState | "typing", SpriteFrameRect[]>>;
+}
+
 export interface StateFrames {
   idle: string[];
   click: string[];
@@ -48,6 +66,7 @@ export interface ChromakeyOptions {
 export interface ImageImportOptions {
   trimTransparent?: boolean;
   chromakey?: ChromakeyOptions | null;
+  useRembg?: boolean;
 }
 
 export interface DailyStats {
@@ -132,6 +151,11 @@ export interface PetConfig {
   weeklyStats: WeeklyStatEntry[];
   pluginsEnabled: boolean;
   autoUpdateCheck: boolean;
+  renderMode: RenderMode;
+  pixelSkin: PixelSkin;
+  spriteSheet: SpriteSheetConfig | null;
+  shimejiMode: boolean;
+  bongoMode: boolean;
 }
 
 export interface ProfileInfo {
@@ -177,6 +201,11 @@ export const DEFAULT_CONFIG: PetConfig = {
   frames: { ...DEFAULT_FRAMES },
   cssEffect: "breathe",
   animationMode: "flipbook",
+  renderMode: "pixel",
+  pixelSkin: "cat",
+  spriteSheet: null,
+  shimejiMode: true,
+  bongoMode: true,
   affection: 50,
   unlockedTiers: [],
   customPhrases: { ...DEFAULT_CUSTOM_PHRASES },
@@ -235,6 +264,12 @@ export function cloneConfig(config: PetConfig): PetConfig {
 
 export function hasAnyFrame(frames: StateFrames): boolean {
   return Object.values(frames).some((list) => list.length > 0);
+}
+
+export function isPetRenderable(config: PetConfig): boolean {
+  if (config.renderMode === "pixel") return true;
+  if (config.renderMode === "spritesheet" && config.spriteSheet?.imagePath) return true;
+  return hasAnyFrame(config.frames);
 }
 
 export function primaryIdleFrames(frames: StateFrames): string[] {

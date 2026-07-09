@@ -97,6 +97,13 @@
         activity: document.getElementById("toggle-activity"),
         weather: document.getElementById("toggle-weather"),
         officeBridge: document.getElementById("toggle-office-bridge"),
+        renderMode: document.getElementById("render-mode"),
+        pixelSkin: document.getElementById("pixel-skin"),
+        shimeji: document.getElementById("toggle-shimeji"),
+        bongo: document.getElementById("toggle-bongo"),
+        rembg: document.getElementById("toggle-rembg"),
+        pickSpriteSheet: document.getElementById("btn-pick-sprite-sheet"),
+        spriteSheetStatus: document.getElementById("sprite-sheet-status"),
         frameGaps: document.getElementById("frame-gaps"),
         configSummary: document.getElementById("config-summary"),
         previewChroma: document.getElementById("preview-chroma"),
@@ -215,10 +222,22 @@
         const color = el.chromakeyColor?.value?.trim();
         return {
           trimTransparent: Boolean(el.trim?.checked),
+          useRembg: Boolean(el.rembg?.checked),
           chromakey: color
             ? { color, tolerance: Number(el.chromakeyTolerance?.value) || 32 }
             : null,
         };
+      }
+
+      function updateRenderModeUi() {
+        const mode = el.renderMode?.value || "flipbook";
+        const pixelOn = mode === "pixel";
+        const sheetOn = mode === "spritesheet";
+        if (el.pixelSkin?.closest("label")) {
+          el.pixelSkin.closest("label").style.display = pixelOn ? "" : "none";
+        }
+        if (el.pickSpriteSheet) el.pickSpriteSheet.style.display = sheetOn ? "" : "none";
+        if (el.spriteSheetStatus) el.spriteSheetStatus.style.display = sheetOn ? "" : "none";
       }
 
       function stopPreview() {
@@ -368,6 +387,10 @@
       function readForm() {
         const base = {
           petName: el.petName.value.trim() || "小宠物",
+          renderMode: el.renderMode?.value || "flipbook",
+          pixelSkin: el.pixelSkin?.value || "cat",
+          shimejiMode: el.shimeji?.checked !== false,
+          bongoMode: el.bongo?.checked !== false,
           cssEffect: el.cssEffect.value,
           animationMode: el.animationMode?.value || "flipbook",
           frameIntervalMs: Number(el.frameInterval.value) || 180,
@@ -424,6 +447,18 @@
         if (el.chromakeyTolerance) {
           el.chromakeyTolerance.value = String(config.importOptions?.chromakey?.tolerance ?? 32);
         }
+        if (el.rembg) el.rembg.checked = Boolean(config.importOptions?.useRembg);
+        if (el.renderMode) el.renderMode.value = String(config.renderMode ?? "flipbook");
+        if (el.pixelSkin) el.pixelSkin.value = String(config.pixelSkin ?? "cat");
+        if (el.shimeji) el.shimeji.checked = config.shimejiMode !== false;
+        if (el.bongo) el.bongo.checked = config.bongoMode !== false;
+        if (el.spriteSheetStatus) {
+          const sheet = config.spriteSheet;
+          el.spriteSheetStatus.textContent = sheet?.imagePath
+            ? `已配置精灵图：${sheet.imagePath.split(/[/\\]/).pop()}`
+            : "未导入精灵图";
+        }
+        updateRenderModeUi();
         if (el.displayMode) el.displayMode.value = String(config.displayMode ?? "full");
         if (el.pomodoroMinutes) el.pomodoroMinutes.value = String(config.pomodoroMinutes ?? 25);
         if (el.weatherCity) el.weatherCity.value = String(config.weatherCity ?? "Beijing");
@@ -620,6 +655,36 @@
         setStatus("已填入台词建议，可继续编辑");
       });
 
+      el.renderMode?.addEventListener("change", () => updateRenderModeUi());
+
+      el.pickSpriteSheet?.addEventListener("click", async () => {
+        if (!configApi.pickSpriteSheet) return setStatus("请重启应用后重试");
+        try {
+          const picked = await configApi.pickSpriteSheet();
+          if (picked.canceled) return;
+          if (!picked.ok) return setStatus(picked.reason || "导入失败");
+          const cur = await configApi.getConfig();
+          const form = readForm();
+          form.renderMode = "spritesheet";
+          form.spriteSheet = picked.spriteSheet;
+          const res = await configApi.save({
+            config: form,
+            importOptions: readImportOptions(),
+          });
+          if (res.ok) {
+            setStatus("精灵图已导入并保存");
+            if (el.spriteSheetStatus) {
+              el.spriteSheetStatus.textContent = `已配置精灵图：${picked.spriteSheet.imagePath.split(/[/\\]/).pop()}`;
+            }
+            if (res.config) await loadConfigIntoForm(res.config);
+          }
+        } catch (err) {
+          setStatus(`精灵图导入失败：${err?.message || err}`);
+        }
+      });
+
+      updateRenderModeUi();
+
       el.previewToggle?.addEventListener("click", () => {
         if (previewTimer) stopPreview();
         else startPreview();
@@ -654,18 +719,32 @@
 
       el.save?.addEventListener("click", async () => {
         if (!configApi) return setStatus("页面桥接失败，请重启应用");
-        if (!uploads.length) return setStatus("请先选择至少一张图片");
+        const form = readForm();
+        const mode = form.renderMode || "flipbook";
+        if (!uploads.length && mode === "flipbook") {
+          return setStatus("连续帧模式请先选择至少一张图片，或切换到像素/精灵图模式");
+        }
+        if (mode === "spritesheet" && !form.spriteSheet?.imagePath) {
+          const cur = await configApi.getConfig();
+          if (!cur?.spriteSheet?.imagePath) {
+            return setStatus("精灵图模式请先导入 PNG + JSON");
+          }
+          form.spriteSheet = cur.spriteSheet;
+        }
         try {
-          const flipbook = isFlipbookMode();
-          const res = await configApi.save({
-            config: readForm(),
+          const flipbook = isFlipbookMode() && mode === "flipbook";
+          const payload = {
+            config: form,
             importOptions: readImportOptions(),
-            assignments: uploads.map((u, index) => ({
+          };
+          if (uploads.length) {
+            payload.assignments = uploads.map((u, index) => ({
               sourcePath: u.filePath,
               state: flipbook ? "idle" : u.state,
               order: index,
-            })),
-          });
+            }));
+          }
+          const res = await configApi.save(payload);
           if (res.ok) {
             setStatus(`已生成宠物：${res.summary}`);
             if (res.config) await loadConfigIntoForm(res.config);

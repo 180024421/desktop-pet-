@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("configApi", {
   getConfig: () => ipcRenderer.invoke("config:get"),
   pickImages: () => ipcRenderer.invoke("config:pick-images"),
   pickMedia: () => ipcRenderer.invoke("config:pick-media"),
+  pickSpriteSheet: () => ipcRenderer.invoke("config:pick-sprite-sheet"),
   extractFrames: (payload: { sourcePath: string; fps?: number; maxFrames?: number }) =>
     ipcRenderer.invoke("config:extract-frames", payload),
   save: (payload: unknown) => ipcRenderer.invoke("config:save", payload),
